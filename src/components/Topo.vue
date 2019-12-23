@@ -10,17 +10,17 @@
         <!-- 侧栏菜单 -->
         <el-menu>
           <!-- 子菜单 -->
-          <el-submenu index="1">
+          <el-submenu v-for="(type, index) in typeList" :key="type" :index="String(index)">
             <template slot="title">
-              <i class="el-icon-location"></i>
-              <span>普通样式</span>
+              <i class="el-icon-s-grid"></i>
+              <span>{{type}}</span>
             </template>
             <el-menu-item-group>
               <el-menu-item
-              v-for="(item, index) in libraryList"
+              v-for="item in libraryList[type]"
               :key="item.id"
               class="library-item">
-                <div draggable="true" @dragstart="dragToBoardStart(index, $event)">
+                <div draggable="true" @dragstart="dragToBoardStart">
                   <img :src="item.pic" :alt="item.name" draggable="false">
                   <span>{{item.name}}</span>
                 </div>
@@ -82,7 +82,8 @@ export default {
   },
   data () {
     return {
-      libraryList: [], // 左侧节点库的节点数据
+      libraryList: {}, // 左侧节点库的节点数据
+      typeList: [], // 节点分类
       nodeList: [], // 在topo图中的节点数据
       connecting:{ // 显示正在连接的线条
         x1: 0,
@@ -98,18 +99,19 @@ export default {
   },
   methods: {
     // 从左边的节点库拖出节点
-    dragToBoardStart (index, e) {
-      e.dataTransfer.setData('text/plain', index) // 设置需要拖出传输的内容格式和内容，这里设置为id
+    dragToBoardStart (e) {
+      // 设置拖出的数据
+      e.dataTransfer.setData('text/plain', JSON.stringify({pic: e.target.children[0].src, name: e.target.children[1].innerText}))
       e.dataTransfer.effectAllowed = "copy" // 设置拖的操作为复制操作
+      // window.console.log(e)
     },
     // 节点拖放到topo图区域，即新建节点
     dropToBoard (e) {
-      const index = Number(e.dataTransfer.getData('text/plain')) // 接收来自拖出操作的节点的下标
-      // window.console.log(e)
+      const content = JSON.parse(e.dataTransfer.getData('text/plain')) // 接收来自拖出的内容,并还原为对象
       let node = {
         id: Symbol(), // 唯一id
-        pic: this.libraryList[index].pic, // 图片
-        name: this.libraryList[index].name, // 默认显示名称，可修改
+        pic: content.pic, // 图片
+        name: content.name, // 默认显示名称，可修改
         x: e.layerX, // 横坐标
         y: e.layerY, // 纵坐标
         link: [] // 连接
@@ -239,6 +241,7 @@ export default {
   },
   mounted () {
     this.libraryList = nodeData
+    this.typeList = Object.keys(this.libraryList)
   }
 }
 </script>
