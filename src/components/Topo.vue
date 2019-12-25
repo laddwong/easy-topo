@@ -33,6 +33,11 @@
       <el-main class="board-container">
         <!-- topo中的节点的右键菜单 -->
         <Context-Menu :position="position" v-if="showMenu" @menuClick="clickMenuItem" />
+        <!-- 功能按键 -->
+        <div class="button-container">
+          <el-button @click="saveTopo">保存拓扑</el-button>
+          <el-button @click="clearTopo" type="danger">清空拓扑</el-button>
+        </div>
         <!-- 画板 -->
         <svg 
         class="board" 
@@ -54,11 +59,10 @@
           style="stroke:rgb(255,0,0);stroke-width:2"/>
           <!-- topo图上的节点 -->
           <g 
-          v-for="(item, index) in nodeList"
+          v-for="(item, index) in topoNodes"
           :key="item.id"
           @mousedown.left.stop.prevent="moveAndLink(index, $event)"
-          @click.right.stop.prevent="nodeMenu(index, $event)"
-          >
+          @click.right.stop.prevent="nodeMenu(index, $event)">
             <image :xlink:href="item.pic" width="50px" height="50px" :x="item.x" :y="item.y"></image>
             <text :x="item.x + 25" :y="item.y + 66" style="text-anchor: middle; user-select: none;">{{item.name}}</text>
           </g>
@@ -84,7 +88,8 @@ export default {
     return {
       libraryList: {}, // 左侧节点库的节点数据
       typeList: [], // 节点分类
-      nodeList: [], // 在topo图中的节点数据
+      topoNodes: [], // topo图中的节点
+      topoLinks: [], // topo图中的连线
       connecting:{ // 显示正在连接的线条
         x1: 0,
         y1: 0,
@@ -108,26 +113,26 @@ export default {
     // 节点拖放到topo图区域，即新建节点
     dropToBoard (e) {
       const content = JSON.parse(e.dataTransfer.getData('text/plain')) // 接收来自拖出的内容,并还原为对象
+      const date = new Date()
       let node = {
-        id: Symbol(), // 唯一id
+        id: date.getTime(), // 用时间戳生成唯一id，Symbol类型的id不能存储到本地
         pic: content.pic, // 图片
         name: content.name, // 默认显示名称，可修改
         x: e.layerX, // 横坐标
         y: e.layerY, // 纵坐标
-        link: [] // 连接
       }
-      this.nodeList.push(node)
+      this.topoNodes.push(node)
     },
     // 移动topo图中的节点，连接节点
     moveAndLink (index, e) {
       // 判断当前模式
       if (this.move) {
         // 移动模式
-        const layerX = e.layerX - this.nodeList[index].x
-        const layerY = e.layerY - this.nodeList[index].y
+        const layerX = e.layerX - this.topoNodes[index].x
+        const layerY = e.layerY - this.topoNodes[index].y
         document.onmousemove = (e) => {
-          this.nodeList[index].x = e.layerX - layerX 
-          this.nodeList[index].y = e.layerY - layerY
+          this.topoNodes[index].x = e.layerX - layerX 
+          this.topoNodes[index].y = e.layerY - layerY
         }
         document.onmouseup = () => {
           document.onmousemove = null
@@ -135,7 +140,12 @@ export default {
         }
       } else {
         // 连线模式
-        this.nodeList[this.indexOfMenu].link.push(this.nodeList[index].id) // 在节点中增加连线终点的id
+        this.topoLinks.push({
+          startNodeId: this.topoNodes[this.indexOfMenu].id,
+          endNodeId: this.topoNodes[index].id,
+          startInterface: 'fa0/1',
+          endInterface: 'fa0/1'
+        })
         this.connecting = { // 重置正在连接的线
           x1: 0,
           y1: 0,
@@ -148,7 +158,7 @@ export default {
     },
     // 显示topo图上的节点的右键菜单
     nodeMenu (index, e) {
-      this.position = {x: e.clientX, y: e.clientY}
+      this.position = {x: e.offsetX, y: e.offsetY}
       this.showMenu = true
       this.indexOfMenu = index
     },
@@ -162,10 +172,10 @@ export default {
         this.move = false
         // 创建连线
         this.connecting = {
-          x1: this.nodeList[this.indexOfMenu].x + 20,
-          y1: this.nodeList[this.indexOfMenu].y + 20,
-          x2: this.nodeList[this.indexOfMenu].x + 20,
-          y2: this.nodeList[this.indexOfMenu].y + 20
+          x1: this.topoNodes[this.indexOfMenu].x + 20,
+          y1: this.topoNodes[this.indexOfMenu].y + 20,
+          x2: this.topoNodes[this.indexOfMenu].x + 20,
+          y2: this.topoNodes[this.indexOfMenu].y + 20
         }
         // 连线终点跟随鼠标
         document.onmousemove = (e) => {
@@ -181,17 +191,17 @@ export default {
           inputPattern: /\S/,
           inputErrorMessage: '名称不能为空'
         }).then(({ value }) => {
-          this.nodeList[this.indexOfMenu].name = value
+          this.topoNodes[this.indexOfMenu].name = value
         })
       }
       // 删除功能
       if (option === 'delete') {
-        MessageBox.confirm(`是否删除节点 "${this.nodeList[this.indexOfMenu].name}"`, '删除节点', {
+        MessageBox.confirm(`是否删除节点 "${this.topoNodes[this.indexOfMenu].name}"`, '删除节点', {
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           type: 'warning'
         }).then(() => {
-          this.nodeList.splice(this.indexOfMenu, 1)
+          this.topoNodes.splice(this.indexOfMenu, 1)
         })
       }
     },
@@ -210,38 +220,55 @@ export default {
         y2: 0
       }
       document.onmousemove = null
+    },
+    // 保存Topo
+    saveTopo () {
+      localStorage.topoNodes = JSON.stringify(this.topoNodes)
+      localStorage.topoLinks = JSON.stringify(this.topoLinks)
+      MessageBox('保存成功')
+    },
+    clearTopo () {
+      MessageBox.confirm('是否清空当前拓扑图？', '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        localStorage.removeItem('topoNodes')
+        localStorage.removeItem('topoLinks')
+        this.topoNodes = []
+        this.topoLinks = []
+      })
     }
   },
   computed: {
-    // 节点之间的连线
+    // 动态计算节点间的连线
     lines () {
-      let tempLines = []
-      const idList = this.nodeList.map(item => { return item.id })
-      // 遍历所有节点
-      this.nodeList.forEach(item => {
-        // 连线起点的坐标
-        let startX = item.x
-        let startY = item.y
-        // 遍历终点
-        item.link.forEach(destination => {
-          let destinationIndex = idList.indexOf(destination)
-          if (destinationIndex !== -1) {
-            // 终点存在，建立连线
-            tempLines.push({
-              x1: startX + 20,
-              y1: startY + 20,
-              x2: this.nodeList[destinationIndex].x + 20,
-              y2: this.nodeList[destinationIndex].y + 20
-            })
-          }
-        })
+      let hash = {}
+      const OFFSET = 20
+      this.topoNodes.forEach((node, index) => {
+        hash[node.id] = index
       })
-      return tempLines
+      return this.topoLinks.map(item => {
+        const startNode = this.topoNodes[hash[item.startNodeId]]
+        const endNode = this.topoNodes[hash[item.endNodeId]]
+        return {
+          x1: startNode.x + OFFSET,
+          y1: startNode.y + OFFSET,
+          x2: endNode.x + OFFSET,
+          y2: endNode.y + OFFSET,
+          startInterface: item.startInterface,
+          endInterface: item.endInterface
+        }
+      })
     }
   },
   mounted () {
     this.libraryList = nodeData
     this.typeList = Object.keys(this.libraryList)
+    if (localStorage.topoNodes && localStorage.topoLinks) {
+      this.topoNodes = JSON.parse(localStorage.topoNodes)
+      this.topoLinks = JSON.parse(localStorage.topoLinks)
+    }
   }
 }
 </script>
@@ -263,6 +290,12 @@ export default {
 }
 .board-container {
   padding: 0;
+  position: relative;
+}
+.button-container {
+  position: absolute;
+  right: 16px;
+  top: 10px;
 }
 .board {
   background-color: #FFF;
